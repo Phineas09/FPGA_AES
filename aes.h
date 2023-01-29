@@ -1,3 +1,6 @@
+#include <iostream>
+#include <ap_int.h>
+#include <hls_stream.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -7,14 +10,15 @@
 
 typedef uint8_t uchar;
 
-void printHex(uint8_t *str);
-
-/**
- * @brief Encrypt and decrypt function of AES ECB
- * 
- * @param aesKey aes key as array of 16 bytes
- * @param input input must be of size 16
- * @param output must be an allocated array of 16 bytes
- * @param mode encrypt or decrypt (0 for encryption and anything else for decryption)
- */
-void AES_ECB(uint8_t *aesKey, uint8_t *input, uint8_t *output, int mode);
+extern "C"
+{
+    /**
+     * @brief Encrypt and decrypt function of AES ECB
+     *
+     * @param aesKey aes key as array of 16 bytes
+     * @param input input must be of size 16
+     * @param output must be an allocated array of 16 bytes
+     * @param mode encrypt or decrypt (0 for encryption and anything else for decryption)
+     */
+    void AES_ECB(uint8_t *aesKey, uint8_t *input, uint8_t *output, int mode);
+}

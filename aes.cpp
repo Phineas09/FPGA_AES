@@ -1,4 +1,7 @@
 #include "aes.h"
+#include <iostream>
+#include <ap_int.h>
+#include <hls_stream.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -8,15 +11,6 @@
 // Static lookup tables needed for substitution and key generation
 
 // Aes-128
-
-void printHex(uint8_t *str)
-{
-    uint8_t len = 16;
-    unsigned char i;
-    for (i = 0; i < len; ++i)
-        printf("%.2x ", str[i]);
-    printf("\n");
-}
 
 // https://en.wikipedia.org/wiki/Rijndael_S-box
 static const uchar sbox[] = { // 16x16
@@ -57,6 +51,56 @@ static const uchar rsbox[] = {
 
 static const uchar rcon[] = {
     0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36};
+
+// Helper Function Gallois Field Multiplication
+
+static uchar GFMul(uchar a, uchar b)
+{
+    uchar result = 0;
+    uchar shiftGreaterThan255 = 0;
+    uchar i = 0;
+    // Loop through each bit in `b`
+    for (i = 0; i < 8; i++)
+    {
+        if (b & 1)
+            result ^= a;
+
+        shiftGreaterThan255 = a & 0x80;
+        a <<= 1;
+
+        if (shiftGreaterThan255)
+            a ^= 0x1b;
+
+        b >>= 1;
+    }
+
+    return result;
+}
+
+// Read Data from Global Memory and write into Stream inStream
+static void ReadInput(uint8_t *in, hls::stream<uint8_t> &inStream, int vSize)
+{
+// Auto-pipeline is going to apply pipeline to this loop
+ReadOutsideInputLoop:
+    for (int i = 0; i < vSize; i++)
+    {
+#pragma HLS LOOP_TRIPCOUNT min = 16 max = 16
+        // Blocking write command to inStream
+        inStream << in[i];
+    }
+}
+
+static void WriteOutput(uint8_t *out, uchar *outBuffer, int vSize)
+{
+// Auto-pipeline is going to apply pipeline to this loop
+WriteOutputLoop:
+    for (int i = 0; i < vSize; i++)
+    {
+#pragma HLS LOOP_TRIPCOUNT min = 16 max = 16
+        // Blocking write command to inStream
+        out[i] = outBuffer[i];
+    }
+}
 
 // Key Expansion Function, this is used to get generate RoundKeys for all rounds
 // Based on rcon and the initial key
@@ -130,50 +174,7 @@ KeyExpansionLoop2:
 #pragma HLS loop_flatten off
             RoundKey[j + x] = RoundKey[u + x] ^ temp[x];
         }
-
-        //        RoundKey[j + 0] = RoundKey[u + 0] ^ temp[0];
-        //        RoundKey[j + 1] = RoundKey[u + 1] ^ temp[1];
-        //        RoundKey[j + 2] = RoundKey[u + 2] ^ temp[2];
-        //        RoundKey[j + 3] = RoundKey[u + 3] ^ temp[3];
     }
-}
-
-// Helper Function Gallois Field Multiplication
-
-static uchar GFMul(uchar a, uchar b)
-{
-    uchar result = 0;
-    uchar shiftGreaterThan255 = 0;
-    uchar i = 0;
-    // Loop through each bit in `b`
-    for (i = 0; i < 8; i++)
-    {
-        // If the LSB is set (i.e. we're not multiplying out by zero for this polynomial term)
-        // then we xor the result with `a` (i.e. adding the polynomial terms of a)
-        if (b & 1)
-        {
-            result ^= a;
-        }
-
-        // Double `a`, keeping track of whether that causes `a` to "leave" the field.
-        shiftGreaterThan255 = a & 0x80;
-        a <<= 1;
-
-        // The next bit we look at in `b` will represent multiplying the terms in `a`
-        // by the next power of 2, which is why we can achieve the same result by shifting `a` left.
-        // If `a` left the field, we need to modulo with irreducible polynomial term.
-        if (shiftGreaterThan255)
-        {
-            // Note that we use 0x1b instead of 0x11b. If we weren't taking advantage of
-            // u8 overflow (i.e. by using u16, we would use the "real" term)
-            a ^= 0x1b;
-        }
-
-        // Shift `b` down in order to look at the next LSB (worth twice as much in the multiplication)
-        b >>= 1;
-    }
-
-    return result;
 }
 
 // Now we will implement each function in this Cipher
@@ -258,12 +259,6 @@ static void InvShiftRows(volatile uchar state[4][4])
     state[1][1] = state[1][0];
     state[1][0] = temp;
 
-    // temp = state[1][0];
-    // state[1][0] = state[1][1];
-    // state[1][1] = state[1][2];
-    // state[1][2] = state[1][3];
-    // state[1][3] = temp;
-
     // Rotate third row with two positions to the left
 
     temp = state[2][0];
@@ -304,11 +299,6 @@ MixColumnLoop3:
         stateTemp[1] = state[1][i];
         stateTemp[2] = state[2][i];
         stateTemp[3] = state[3][i];
-
-        //         temp[0] = GFMul(0x02, state[0][i]) ^ GFMul(0x03, state[1][i]) ^ state[2][i] ^ state[3][i];
-        //         temp[1] = state[0][i] ^ GFMul(0x02, state[1][i]) ^ GFMul(0x03, state[2][i]) ^ state[3][i];
-        //         temp[2] = state[0][i] ^ state[1][i] ^ GFMul(0x02, state[2][i]) ^ GFMul(0x03, state[3][i]);
-        //         temp[3] = GFMul(0x03, state[0][i]) ^ state[1][i] ^ state[2][i] ^ GFMul(0x02, state[3][i]);
 
         temp[0] = GFMul(0x02, stateTemp[0]) ^ GFMul(0x03, stateTemp[1]) ^ stateTemp[2] ^ stateTemp[3];
         temp[1] = stateTemp[0] ^ GFMul(0x02, stateTemp[1]) ^ GFMul(0x03, stateTemp[2]) ^ stateTemp[3];
@@ -403,101 +393,75 @@ InvCipherLoop1:
     }
 }
 
-/**
- * @brief Encrypt and decrypt function of AES ECB
- *
- * @param aesKey aes key as array of 16 bytes
- * @param input input must be of size 16
- * @param output must be an allocated array of 16 bytes
- * @param mode encrypt or decrypt (0 for encryption and anything else for decryption)
- */
-void AES_ECB(uint8_t *aesKey, uint8_t *input, uint8_t *output, int mode)
+extern "C"
 {
+    void AES_ECB(uint8_t *aesKey, uint8_t *input, uint8_t *output, int mode)
+    {
+        static hls::stream<uint8_t> inStream1("input_stream_1");
+        static hls::stream<uint8_t> inStream2("input_stream_2");
+        static hls::stream<uint8_t> outStream("output_stream");
+
+#pragma HLS INTERFACE m_axi port = aesKey bundle = gmem0 depth = 16
+#pragma HLS INTERFACE m_axi port = input bundle = gmem1 depth = 16
+#pragma HLS INTERFACE m_axi port = output bundle = gmem0 depth = 16
+
 #pragma HLS ARRAY_PARTITION variable = sbox dim = 0 complete
 #pragma HLS ARRAY_PARTITION variable = rsbox dim = 0 complete
-
-    volatile uchar RoundKey[(Nr + 1) * Nb * 4]; // Rounds + Key(1) * 16
-#pragma HLS ARRAY_PARTITION variable = RoundKey dim = 0 complete
-    KeyExpansion(aesKey, RoundKey);
-    volatile uchar statePrt[4][4];
-#pragma HLS ARRAY_PARTITION variable = statePrt dim = 0 complete
-
-    uchar i = 0;
-    uchar j = 0;
-    // As per Cipher Example Appendix B
-
-AES_ECB_Loop1:
-    for (i = 0; i < 4; i++)
-    AES_ECB_Loop2:
-        for (j = 0; j < 4; j++)
-            statePrt[j][i] = input[j + (i * 4)];
-
-    if (mode == 0)
-        Cipher(statePrt, (uchar *)(&RoundKey));
-    else
-        InvCipher(statePrt, (uchar *)(&RoundKey));
-    // printHex(statePrt);
-    // Copy the result back to out
-
-AES_ECB_Loop3:
-    for (i = 0; i < 4; i++)
-    AES_ECB_Loop4:
-        for (j = 0; j < 4; j++)
-            output[j + (i * 4)] = statePrt[j][i];
-}
-
-int main()
-{
-    uchar key[] = {0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c};
-    uchar in[] = {0x32, 0x43, 0xf6, 0xa8, 0x88, 0x5a, 0x30, 0x8d, 0x31, 0x31, 0x98, 0xa2, 0xe0, 0x37, 0x07, 0x34};
-    uchar out[16];
-    uchar out2[16];
-
-    printHex(in);
-    AES_ECB(key, in, out, 0);
-    AES_ECB(key, out, out2, 5);
-    printHex(out);
-    printHex(out2);
-    return 0;
-}
-
 /*
-void AES_ECB_encrypt(uint8_t *aesKey, uint8_t *input, uint8_t *output)
-{
+ *
+ * This directive specifically tells the HLS compiler to generate a hardware design that implements a dataflow architecture, which is a type of parallel processing architecture where the data is the primary driver of the computation.
+ * In other words, when this directive is used, the HLS compiler will optimize the code to perform the operations in parallel, as soon as the data is available and will not wait for other operations to complete.
+ *
+ */
+#pragma HLS dataflow
 
-    // https://docs.xilinx.com/r/en-US/ug1399-vitis-hls/pragma-HLS-array_partition
-#pragma HLS ARRAY_PARTITION variable = sbox dim = 0 complete
-    // #pragma HLS ARRAY_PARTITION variable = rsbox dim = 0 complete
+        ReadInput(aesKey, inStream1, 16);
+        ReadInput(input, inStream2, 16);
 
-    volatile uchar RoundKey[(Nr + 1) * Nb * 4]; // Rounds + Key(1) * 16
+        uchar aesKeyRead[16];
+        uchar inputRead[16];
+        uchar outputWrite[16];
+
+        for (int i = 0; i < 16; i++)
+        {
+            aesKeyRead[i] = inStream1.read();
+        }
+
+        for (int i = 0; i < 16; i++)
+        {
+            inputRead[i] = inStream2.read();
+        }
+
+        volatile uchar RoundKey[(Nr + 1) * Nb * 4]; // Rounds + Key(1) * 16
+        volatile uchar statePrt[4][4];
+
 #pragma HLS ARRAY_PARTITION variable = RoundKey dim = 0 complete
-    KeyExpansion(aesKey, RoundKey);
-    volatile uchar statePrt[4][4];
 #pragma HLS ARRAY_PARTITION variable = statePrt dim = 0 complete
 
-    uchar i = 0;
-    uchar j = 0;
+        KeyExpansion(aesKeyRead, RoundKey);
 
-    // As per Cipher Example Appendix B
+        uchar i = 0;
+        uchar j = 0;
 
-AES_ECB_encryptLoop1:
-    for (i = 0; i < 4; i++)
-    AES_ECB_encryptLoop2:
-        for (j = 0; j < 4; j++)
-            statePrt[j][i] = input[j + (i * 4)];
+    AES_ECB_Loop1:
+        for (i = 0; i < 4; i++)
+        AES_ECB_Loop2:
+            for (j = 0; j < 4; j++)
+                statePrt[j][i] = inputRead[j + (i * 4)];
 
-    Cipher(statePrt, (uchar *)(&RoundKey));
+        // Perform Encryption or Decryption
+        if (mode == 0)
+            Cipher(statePrt, (uchar *)(&RoundKey));
+        else
+            InvCipher(statePrt, (uchar *)(&RoundKey));
 
-    // Copy the result back to out
+    AES_ECB_Loop3:
+        for (i = 0; i < 4; i++)
+        AES_ECB_Loop4:
+            for (j = 0; j < 4; j++)
+                outputWrite[j + (i * 4)] = statePrt[j][i];
 
-AES_ECB_encryptLoop3:
-    for (i = 0; i < 4; i++)
-    AES_ECB_encryptLoop4:
-        for (j = 0; j < 4; j++)
-            output[j + (i * 4)] = statePrt[j][i];
+        WriteOutput(output, outputWrite, 16);
+        return;
+    }
 }
-*/
-
-// https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=901427
-// file:///C:/Users/claud/Downloads/ug1399-vitis-hls-en-us-2022.2.pdf
-// https://github.com/kokke/tiny-AES-c
