@@ -1,0 +1,30 @@
+1
+Dec_Input:	3ad77bb40d7a3660a89ecaf32466ef97
+Dec_OutG:	6bc1bee22e409f96e93d7e117393172a
+Dec_Out:	6bc1bee22e409f96e93d7e117393172a
+2
+Dec_Input:	f5d3d58503b9699de785895a96fdbaaf
+Dec_OutG:	ae2d8a571e03ac9c9eb76fac45af8e51
+Dec_Out:	ae2d8a571e03ac9c9eb76fac45af8e51
+3
+Dec_Input:	43b1cd7f598ece23881b00e3ed030688
+Dec_OutG:	30c81c46a35ce411e5fbc1191a0a52ef
+Dec_Out:	30c81c46a35ce411e5fbc1191a0a52ef
+4
+Dec_Input:	7b0c785e27e8ad3f8223207104725dd4
+Dec_OutG:	f69f2445df4f9b17ad2b417be66c3710
+Dec_Out:	f69f2445df4f9b17ad2b417be66c3710
+5
+Dec_Input:	df3d133f6643049d4d6d354e1b4e04f7
+Dec_OutG:	a031d39bcf9916fc6a3f93c721bfee26
+Dec_Out:	a031d39bcf9916fc6a3f93c721bfee26
+6
+Dec_Input:	2c0e2bf6559334e70d8749882d22665a
+Dec_OutG:	a254be88e037ddd9d79fb6411c3f9df8
+Dec_Out:	a254be88e037ddd9d79fb6411c3f9df8
+7
+Dec_Input:	c036b17fcade1d0fb36fbd31c9348e3a
+Dec_OutG:	2c0e2b3298473289483749882d22665a
+Dec_Out:	2c0e2b3298473289483749882d22665a
+
+
