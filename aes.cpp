@@ -355,7 +355,6 @@ AddKeyRoundLoop1:
 // Cipher is the main function that encrypts the PlainText.
 static void Cipher(volatile uchar state[4][4], uchar *RoundKey)
 {
-
     uint8_t round = 0;
     AddKeyRound(0, state, RoundKey);
 CipherLoop1:
